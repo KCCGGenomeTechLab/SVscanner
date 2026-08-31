@@ -131,6 +131,10 @@ svscanner --vcf $SVSCANNER_TESTDATA/HG002_subset_mini/HG002_subset_mini.vcf.gz \
 6. A simple workflow runtime benchmark done on NCI Gadi ([link](docs/nci_benchmark.md))
 7. To run a development checkout on Gadi instead of the module, use [scripts/nci_gadi_if89.sh](scripts/nci_gadi_if89.sh), which loads the same dependencies as modules.
 
+## Releasing
+
+The version number lives only in the [VERSION](VERSION) file, which `run_workflow.sh` reads at startup. CI and a pre-push hook both reject a release tag `vX.Y.Z` published on a commit that does not say `X.Y.Z`. See [docs/releasing.md](docs/releasing.md).
+
 ## Bug Reports
 
 Please report/request any issues/features via [GitHub Issues](https://github.com/GenTechGp/SVscanner/issues).

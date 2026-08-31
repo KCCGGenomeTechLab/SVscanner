@@ -1,0 +1,30 @@
+name: version check
+
+# Guards the release number. Tags created through the GitHub website never reach a
+# local pre-push hook, so this is the check that catches a tag vX.Y.Z published on a
+# commit whose VERSION file says something else.
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version consistency
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            # Take the expected version from the tag name rather than from a fetched
+            # tag object, so the check does not depend on the checkout's tag depth.
+            scripts/check_version.sh --expect "${GITHUB_REF_NAME#v}"
+          else
+            scripts/check_version.sh
+          fi

@@ -1,13 +1,16 @@
 #!/bin/bash
 
-VERSION="SVscanner v0.5.2"
-
 # set -x
 die() { echo -e "$1" >&2 ; echo ; exit 1 ; } # terminate script
 
 # Repository root, resolved from this script's own location so the workflow can be
 # invoked from any working directory (e.g. via a module that puts it on $PATH).
 SVSCANNER_HOME=$(cd -- "$(dirname -- "$(realpath "${BASH_SOURCE[0]}")")/.." && pwd) || die "could not resolve SVscanner root"
+
+# The VERSION file at the repository root is the single source of truth for the
+# release number - never hardcode it here. scripts/check_version.sh enforces that
+# this script, the README and the git tag all agree with that file.
+VERSION="SVscanner v$(cat "${SVSCANNER_HOME}/VERSION" 2>/dev/null || echo unknown)"
 
 # Input/Output (change)
 #REF=$(realpath "/g/data/te53/ontsv/references/hg38_reference_files/hg38.analysisSet.fa")
@@ -415,8 +418,9 @@ show_output_paths() {
 }
 
 T0=$(date +%s)
-echo "SVscanner version: ${VERSION}"
+# Banner after parse_args, so that --version and --help print only their own output.
 parse_args "$@"
+echo "SVscanner version: ${VERSION}"
 resolve_thread_counts
 check_required
 if [[ ${RESUME} -eq 1 ]]; then

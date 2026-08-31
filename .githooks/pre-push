@@ -1,0 +1,43 @@
+#!/bin/bash
+# Block a push whose committed version numbers disagree with each other.
+#
+#   - pushing a tag vX.Y.Z whose commit does not say X.Y.Z  -> rejected
+#   - pushing a branch whose tip has a stale README version  -> rejected
+#
+# Enable once per clone (the setting is per-repository, not per-branch):
+#
+#   git config core.hooksPath .githooks
+#
+# Override for a one-off push with `git push --no-verify`.
+
+set -u
+
+REPO_ROOT=$(git rev-parse --show-toplevel) || exit 1
+CHECK="${REPO_ROOT}/scripts/check_version.sh"
+[[ -x $CHECK ]] || exit 0   # nothing to enforce on old commits
+
+FAILED=0
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+    [[ $local_sha =~ ^0+$ ]] && continue   # branch or tag deletion
+
+    commit=$(git rev-parse -q --verify "${local_sha}^{commit}") || continue
+
+    case "$remote_ref" in
+        refs/tags/v[0-9]*)
+            tag="${remote_ref#refs/tags/}"
+            [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+            "$CHECK" --rev "$commit" --expect "${tag#v}" || FAILED=1
+            ;;
+        refs/heads/*)
+            "$CHECK" --rev "$commit" || FAILED=1
+            ;;
+    esac
+done
+
+if ((FAILED)); then
+    echo >&2
+    echo "pre-push: refusing to push - see the mismatches above." >&2
+    echo "          edit VERSION, commit it, then tag that commit." >&2
+    echo "          to push anyway: git push --no-verify" >&2
+    exit 1
+fi
