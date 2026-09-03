@@ -5,6 +5,7 @@ A VCF file containing 100,000 unique structural variant (SV) records, sourced fr
 - The number of split files
 
 Although this is not an exhaustive benchmark, the following conclusions can be drawn:
+- SVscanner runtime generally depends on the number of SV records and the lengths of the SV sequences, and is independent of the number of samples in the VCF—a single-sample and a multi-sample VCF with the same number of unique SV records should take a similar amount of time.
 - A VCF file with fewer than 700,000 SVs is expected to complete within 48 hours (a typical VCF usually contains around 30,000 SVs - expected to finish in less than 2 hours).
 - Using 500 split files—the default setting—is recommended for balanced performance.
 

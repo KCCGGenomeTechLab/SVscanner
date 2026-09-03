@@ -12,6 +12,7 @@
 # Warnings only (printed, never blocking), because the if89 module is not built for
 # every tag and so the documented module version may legitimately lag VERSION:
 #   - README.md `module load SVscanner/<version>` differing from VERSION
+#   - a container image tag pinned in README.md or docs/docker.md differing from VERSION
 #
 # Usage:
 #   scripts/check_version.sh                  # check the working tree
@@ -90,6 +91,20 @@ while read -r v; do
         warn "README.md${WHERE} says 'module load SVscanner/${v}' but VERSION is ${VERSION}" \
              "- update it if ${VERSION} is now the module installed on if89"
 done <<<"$readme_versions"
+
+# 3b. Container image tags named in the documentation. Unlike the if89 module, an image
+#     is published for every release tag, so a pinned example naming an older release is
+#     simply stale. Still a warning and not an error: the docs are not what a release is
+#     for, and this check necessarily runs before the image it names exists.
+for doc in README.md docs/docker.md; do
+    image_versions=$(read_file "$doc" |
+        grep -oE 'ghcr\.io/[A-Za-z0-9._-]+/svscanner:[0-9]+\.[0-9]+\.[0-9]+' | sed 's#.*:##' | sort -u)
+    while read -r v; do
+        [[ -z $v || $v == "$VERSION" ]] ||
+            warn "${doc}${WHERE} pins the container image at ${v} but VERSION is ${VERSION}" \
+                 "- update the examples when releasing ${VERSION}"
+    done <<<"$image_versions"
+done
 
 # 4. The release tag.
 if [[ -n $EXPECT ]]; then

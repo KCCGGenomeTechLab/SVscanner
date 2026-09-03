@@ -9,6 +9,8 @@ repository root, as a bare `X.Y.Z`. Edit it by hand when cutting a release.
 | `scripts/run_workflow.sh` (`--version`, run banner) | Reads `VERSION` at startup. Never hardcode it. |
 | git tag `vX.Y.Z` | Must match `VERSION` at the tagged commit — checked by CI and by the pre-push hook. |
 | `README.md` (`module load SVscanner/X.Y.Z`) | The version installed as an if89 module, which is not built for every tag. Checked as a warning only. |
+| Container image tag on GHCR | Built and pushed from the tag by [`docker-publish.yml`](../.github/workflows/docker-publish.yml). Nothing to edit. |
+| `README.md`, `docs/docker.md` (`ghcr.io/…/svscanner:X.Y.Z` examples) | Pinned versions in the usage examples. Checked as a warning only. |
 
 ## Cutting a release
 
@@ -44,6 +46,14 @@ svscanner --version          # must print: SVscanner v0.6.1
 6. Update the `module load SVscanner/X.Y.Z` lines in the README to that version, now
    that the module actually exists.
 
+7. **Check the `docker publish` run** under the Actions tab. It builds the image, runs
+   its smoke tests and pushes `ghcr.io/gentechgp/svscanner:X.Y.Z`, `:X.Y` and `:latest`.
+   The first push of a package creates it as **private** — set it to public once, under
+   *Packages → svscanner → Package settings*, or nobody else can pull it.
+
+8. Update the `ghcr.io/…/svscanner:X.Y.Z` examples in the README and
+   [docs/docker.md](docker.md) to the new version.
+
 ## The two checks
 
 Both run [`check_version.sh`](../scripts/check_version.sh), which reads files straight
@@ -76,7 +86,11 @@ Hard errors, which fail CI and block a local push:
 Warning only, never blocking:
 
 - the README's `module load` version differing from `VERSION`, since the if89 module
-  lags the repository between deployments.
+  lags the repository between deployments;
+- a `ghcr.io/…/svscanner:X.Y.Z` example in the README or `docs/docker.md` differing from
+  `VERSION`. An image *is* published for every tag, so this one is genuinely stale rather
+  than legitimately lagging — but the check necessarily runs before the image it names
+  exists, so blocking a release on it would be circular.
 
 Commits from before the `VERSION` file existed are skipped, so old branches still push.
 

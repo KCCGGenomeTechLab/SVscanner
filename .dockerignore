@@ -1,0 +1,21 @@
+# Keep the build context small. A CI build starts from a fresh checkout, but a local
+# `docker build` would otherwise ship the working tree's run outputs (several GB) and
+# the developer virtualenv.
+
+.git
+.github
+.githooks
+.vscode
+.claude
+images
+svscanner
+**/__pycache__
+*.pyc
+
+# Only the test assets the image actually needs: the STRchive BED that
+# run_workflow.sh defaults to, the mini dataset for a smoke test, and the FASTA
+# used to warm up RepeatMasker.
+test/*
+!test/databases
+!test/HG002_subset_mini
+!test/sample.fa
