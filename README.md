@@ -45,6 +45,15 @@ pip install -r requirements.txt
 
 3. Follow instruction listed [here](docs/install_rm.md) to install `RepeatMasker` if not available already.
 
+    If you already have Dfam FamDB partition files (`dfam*.h5`) elsewhere, or your RepeatMasker
+    installation is read-only, point SVscanner at them instead of moving them into the install:
+
+    ```
+    export SVSCANNER_DFAM_DIR=/path/to/dfam   # or pass --dfam_dir
+    ```
+
+    See [External Dfam databases](docs/Commands.md#external-dfam-databases).
+
 4. Check if the following tools are available. If not install them.
  - `bcftools` (v1.21 or above recommended)
  - `bgzip` (v1.21 or above recommended)
@@ -73,6 +82,22 @@ It will take about 10 minutes. The majority of time is taken by the RepeatMasker
 ```
 ./scripts/run_workflow.sh --vcf test/HG002_subset_mini/HG002_subset_mini.vcf.gz --ref [human genome] --out test/output
 ```
+
+## SVscanner in a container
+
+A prebuilt image is published to the GitHub Container Registry on every release, so nothing
+needs cloning or compiling:
+
+```
+docker run --rm -v /path/to/dfam:/dfam:ro -v "$PWD":/data \
+  ghcr.io/gentechgp/svscanner:0.6.1 \
+  svscanner --dfam_dir /dfam --vcf /data/[vcf] --ref /data/[ref] --out /data/[out]
+```
+
+The image carries RepeatMasker, TRF, bcftools and the Python environment, but **not** the
+Dfam database — `-species human` needs the ~57 GB Mammalia partition, which you download
+once and mount. Full details, including Singularity and Nextflow usage, are in
+[docs/docker.md](docs/docker.md).
 
 ## SVscanner on NCI Gadi (project if89)
 

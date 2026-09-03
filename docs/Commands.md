@@ -26,6 +26,7 @@
 | `--prefix`                      | `str`          | `None`                  | Prefix for output files.                                                    |
 | `--str_bed`                     | `str`          | `None`              | Path to BED file containing STR (short tandem repeat) elements.            |
 | `--species`                     | `str`          | `human`              | Species name used by RepeatMasker.                                         |
+| `--dfam_dir`                    | `str`          | `$SVSCANNER_DFAM_DIR` | Directory of Dfam FamDB partition files (`dfam*.h5`) for RepeatMasker to use in addition to the ones bundled with the RepeatMasker install. See [External Dfam databases](#external-dfam-databases). |
 | `--min_sv_coverage`             | `float`        | `0.05`      | Minimum intersection between a repeat element and SV.                      |
 | `--min_class_sv_coverage`       | `float`        | `0.25`| Minimum class-level SV coverage to be considered repetitive.               |
 | `--min_total_sv_coverage`       | `float`        | `0.75`| Minimum total SV coverage by repeats to be considered repetitive.          |
@@ -40,6 +41,46 @@
 | `--help`                       | flag           |                         | Show help message and exit.                                                |
 | `--version`                    | flag           |                         | Show version information and exit.                                         |
 
+---
+
+### External Dfam databases
+
+RepeatMasker reads its Dfam families from FamDB partition files (`dfam*.h5`) in the
+`Libraries/famdb` directory of its own installation. `--dfam_dir` (or the
+`SVSCANNER_DFAM_DIR` environment variable, which the flag overrides) lets you keep those
+partitions somewhere else — useful when the RepeatMasker installation is read-only, shared,
+or inside a container, and the database is not.
+
+Point it at a directory containing the `.h5` files themselves; nothing else is required:
+
+```
+export SVSCANNER_DFAM_DIR=/path/to/dfam
+./scripts/run_workflow.sh --vcf [vcf] --ref [ref] --out [out]
+```
+
+SVscanner assembles a valid RepeatMasker `Libraries` directory under the output directory,
+symlinking the installation's own files and overlaying your partitions on top, then exports
+`LIBDIR` so RepeatMasker picks it up. The partitions are never copied, so a 57 GB file costs
+nothing, and the assembled directory is removed with the other temporary files at the end of
+the run. Files in `--dfam_dir` take precedence over same-named files in the installation.
+
+RepeatMasker derives a search library from the partitions the first time it is asked for a
+given species, and caches it. With `--dfam_dir` that cache is built inside the assembled
+directory, so it is **rebuilt on every run** — measured at about 4 minutes for `-species
+human` against the Dfam 3.9 Mammalia partition. The run log reports it as `Library
+preparation took N seconds`.
+
+The installation's own cache directories are deliberately *not* reused. Their names record
+the database title and version but not which partitions were present when they were built,
+and `--dfam_dir` exists precisely to add partitions the installation lacks — so an
+inherited cache would be stale, and RepeatMasker would reuse it without complaint.
+
+`-species human` needs the **Mammalia** partition (`dfam39_full.7.h5` for Dfam 3.9, ~57 GB)
+in addition to the root partition. RepeatMasker ships the root partition, so in practice only
+the clade partition needs to be downloaded — see the
+[Dfam releases](https://www.dfam.org/releases/) page. Make sure the partitions match the
+FamDB format your RepeatMasker version expects (Dfam 3.9 / FamDB 2.0 for RepeatMasker
+4.1.8–4.2.3).
 
 ## extract_sv.py
 

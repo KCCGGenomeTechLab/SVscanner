@@ -27,6 +27,10 @@ REPEAT_MASKER=""
 BCFTOOLS=""
 BGZIP=""
 
+# Dfam FamDB partitions (dfam*.h5) to use on top of the RepeatMasker install's own.
+# Set with --dfam_dir or $SVSCANNER_DFAM_DIR (the flag wins); see setup_dfam_library.
+DFAM_DIR="${SVSCANNER_DFAM_DIR:-}"
+
 NSPLIT_FILES=500
 # Under a scheduler, use the allocation rather than the whole node. Plain `nproc`
 # (unlike `nproc --all`) honours the cpuset/affinity mask, so it is already
@@ -67,6 +71,9 @@ usage() {
     echo "  --prefix NAME           Prefix for output files (default: None; e.g. Project_, Project.)"
     echo "  --str_bed FILE          Path to STR BED file (default: $STR_BED)"
     echo "  --species NAME          Species name for RepeatMasker (default: $SPECIES)"
+    echo "  --dfam_dir DIR          Directory of Dfam FamDB partition files (dfam*.h5) for RepeatMasker to use"
+    echo "                          in addition to those bundled with the RepeatMasker install."
+    echo "                          Defaults to \$SVSCANNER_DFAM_DIR; unset means use the install's own libraries."
     echo "  --min_sv_coverage VAL   Minimum intersection between a repeat element and SV (aka sv_coverage) (default: $MIN_SV_COVERAGE)"
     echo "  --min_class_sv_coverage VAL Minimum class sv coverage by repeat elements to be considered repetitive (default: $MIN_CLASS_SV_COVERAGE)"
     echo "  --min_total_sv_coverage VAL Minimum total sv coverage by repeat elements to be considered repetitive (default: $MIN_TOTAL_SV_COVERAGE)"
@@ -101,6 +108,8 @@ parse_args() {
                 STR_BED=$(realpath -e "$2" 2>/dev/null) || die "STR BED file not found: $2"; shift 2;;
             --species)
                 SPECIES="$2"; shift 2;;
+            --dfam_dir)
+                DFAM_DIR=$(realpath -e "$2" 2>/dev/null) || die "Dfam directory not found: $2"; shift 2;;
             --min_sv_coverage)
                 MIN_SV_COVERAGE="$2"; shift 2;;
             --min_class_sv_coverage)
@@ -153,6 +162,8 @@ parse_args() {
     EXTRACT_SV_FLANKS_OUT=${OUTPUT_DIR}/${PREFIX}extract_sv_flanks_out
     ANNOTATIONS_OUT=${OUTPUT_DIR}/${PREFIX}annotations_out
     RM_TMP=${OUTPUT_DIR}/RMtmp
+    # Assembled RepeatMasker Libraries directory; only created when --dfam_dir is in use.
+    RM_LIBDIR=${OUTPUT_DIR}/${PREFIX}rm_libraries
     # File Intermediates (keep as it is)
     INFO_FILE=${OUTPUT_DIR}/${PREFIX}info.tab
     RM_FILE=${OUTPUT_DIR}/${PREFIX}rm.tab
@@ -224,6 +235,15 @@ check_required() {
         echo "REPEAT_MASKER: ${REPEAT_MASKER}"
         echo "TRF_BINARY: ${TRF_BINARY}"
         echo "parallel: ${parallel}"
+
+        # Fail on a bad --dfam_dir before doing any work, not after the extraction step.
+        if [[ -n "${DFAM_DIR}" ]]; then
+            [[ -d "${DFAM_DIR}" ]] || die "Dfam directory not found: ${DFAM_DIR}"
+            local h5_count
+            h5_count=$(find "${DFAM_DIR}" -maxdepth 1 -name '*.h5' | wc -l)
+            (( h5_count > 0 )) || die "No FamDB partition files (*.h5) in ${DFAM_DIR}.\nDownload them from https://www.dfam.org/releases/ - '-species human' needs the Mammalia partition (dfam39_full.7.h5) as well as the root partition."
+            echo "DFAM_DIR: ${DFAM_DIR} (${h5_count} partition file(s))"
+        fi
     else
         echo "Resume mode: skipping TRF + RepeatMasker (reusing existing .tab files)"
     fi
@@ -245,6 +265,70 @@ create_output_dir() {
         fi
     fi
 	mkdir -p "${OUTPUT_DIR}" || die "Failed creating ${OUTPUT_DIR}"
+}
+
+setup_dfam_library() {
+    # Let RepeatMasker read partitions that do not live inside its installation.
+    # RepeatMasker takes its FamDB from $LIBDIR/famdb and honours LIBDIR from the
+    # environment (RepeatMaskerConfig.pm, 4.1.6 through 4.2.x). $LIBDIR must also hold
+    # RepeatPeps.lib and friends, which nobody who just downloaded a partition has, so
+    # assemble one out of symlinks - instant even for the 57 GB Mammalia partition.
+    [[ -z "${DFAM_DIR}" ]] && return 0
+
+    local stock_libdir rm_install
+    rm_install=$(dirname "$(realpath "${REPEAT_MASKER}")")
+    stock_libdir="${rm_install}/Libraries"
+    [[ -d "${stock_libdir}" ]] || die "Could not find the RepeatMasker Libraries directory at ${stock_libdir}.\nExpected it alongside ${REPEAT_MASKER}. Unset --dfam_dir/\$SVSCANNER_DFAM_DIR to use RepeatMasker's own configuration."
+
+    echo "Assembling RepeatMasker library directory in ${RM_LIBDIR}..."
+    rm -rf "${RM_LIBDIR}" || die "failed to clear ${RM_LIBDIR}"
+    mkdir -p "${RM_LIBDIR}/famdb" || die "failed to create ${RM_LIBDIR}/famdb"
+
+    # Regular files only. Besides famdb, rebuilt below, the only directories RepeatMasker
+    # keeps here are its library caches ('general', '<engine>-Dfam_<version>'), and those
+    # are unsafe to inherit: the name records the database version but not which
+    # partitions built the cache. Since --dfam_dir exists to add partitions the install
+    # lacks, an inherited cache is stale by construction and RepeatMasker reuses it
+    # silently. Rebuilding costs ~4 min/run for human against Dfam 3.9 Mammalia.
+    local entry name skipped=()
+    for entry in "${stock_libdir}"/*; do
+        [[ -e "${entry}" ]] || continue
+        name=$(basename "${entry}")
+        [[ "${name}" == "famdb" ]] && continue
+        # -f follows symlinks, so a symlinked file is still linked through.
+        if [[ ! -f "${entry}" ]]; then
+            skipped+=("${name}")
+            continue
+        fi
+        ln -sfn "${entry}" "${RM_LIBDIR}/${name}" || die "failed to link ${entry}"
+    done
+    # Logged rather than silent: if an installation ever keeps something here that
+    # RepeatMasker actually needs, this is what makes that visible.
+    (( ${#skipped[@]} )) && echo "  not inherited from the installation (rebuilt per run): ${skipped[*]}"
+
+    # The install's own partitions first - RepeatMasker ships the Dfam root partition,
+    # which is required and which users downloading a clade partition rarely have.
+    local h5
+    for h5 in "${stock_libdir}"/famdb/*; do
+        [[ -e "${h5}" ]] || continue
+        ln -sfn "${h5}" "${RM_LIBDIR}/famdb/$(basename "${h5}")" || die "failed to link ${h5}"
+    done
+
+    # Then --dfam_dir, which overrides same-named files from the install.
+    for h5 in "${DFAM_DIR}"/*.h5; do
+        [[ -e "${h5}" ]] || continue
+        ln -sfn "$(realpath "${h5}")" "${RM_LIBDIR}/famdb/$(basename "${h5}")" || die "failed to link ${h5}"
+    done
+
+    # Exported so the RepeatMasker processes spawned by parallel inherit it.
+    export LIBDIR="${RM_LIBDIR}"
+    echo "LIBDIR: ${LIBDIR}"
+    echo "FamDB partitions in use:"
+    for h5 in "${RM_LIBDIR}"/famdb/*.h5; do
+        [[ -e "${h5}" ]] || continue
+        echo "  $(basename "${h5}") -> $(realpath "${h5}")"
+    done
+    echo "done"
 }
 
 check_resume_inputs() {
@@ -289,6 +373,70 @@ run_trf() {
     echo "done. Tandem Repeat Finder took ${TRF_TIME} seconds"
 }
 
+warm_repeatmasker_cache() {
+    # RepeatMasker derives a per-species library from FamDB on first use and caches it
+    # under $LIBDIR. That build is NOT concurrency-safe: run in parallel the processes
+    # clobber each other's .working dirs and makeblastdb then fails on a missing file.
+    # Build it once, single process, so the fan-out finds it ready. docs/install_rm.md
+    # step 4 does this by hand at install time, but a new species or database - or a
+    # container image built without either - still has to build one on the first run.
+    local warm_dir="${OUTPUT_DIR}/${PREFIX}rm_warmup"
+    local warm_fa="${warm_dir}/warmup.fa"
+    local warm_log="${warm_dir}/warmup.log"
+
+    rm -rf "${warm_dir}" || die "failed to clear ${warm_dir}"
+    mkdir -p "${warm_dir}" || die "failed to create ${warm_dir}"
+
+    # Content is irrelevant - the point is to make RepeatMasker build the library.
+    {
+        echo ">svscanner_library_warmup"
+        echo "ACGTTGCAAGCTTAGCCATGGATCCGTAAGCTTGGATCCAAGCTTGCATGCCTGCAGGTCG"
+        echo "TTACGGCATTCAGGCCTAAGCTTGGCCTAGGCATTAGCCGTAAGGCTTAACCGGATTCCAG"
+        echo "GGCATTAACCGGTTAAGCCTTAAGGCCATTAACCGGTTAACCGGAATTCCGGTTAACCGGA"
+        echo "CCTTAAGGCCTTAAGGCCTTAAGGAATTCCGGAATTCCGGTTAACCGGTTAACCGGAATTC"
+    } > "${warm_fa}" || die "failed to write ${warm_fa}"
+
+    echo "Preparing RepeatMasker libraries for species '${SPECIES}' (single process)..."
+    local T_WARM_START T_WARM_END
+    T_WARM_START=$(date +%s)
+    # Run from inside warm_dir: createTempDir uses cwd(), not -dir, so RepeatMasker would
+    # otherwise scatter RM_<pid> directories through the caller's directory. Same reason
+    # run_repeatmasker cds into RM_TMP before the fan-out.
+    if ! ( cd "${warm_dir}" && ${REPEAT_MASKER} "${warm_fa}" -pa 1 -dir "${warm_dir}" -species "${SPECIES}" > "${warm_log}" 2>&1 ); then
+        echo "RepeatMasker reported (${warm_log}):" >&2
+        tail -n 20 "${warm_log}" | sed 's/^/  /' >&2
+        die "RepeatMasker could not build its libraries for species '${SPECIES}'"
+    fi
+    T_WARM_END=$(date +%s)
+
+    # RepeatMasker reports the database it opened and the families it resolved only into
+    # its per-chunk logs, which cleanup deletes - so a successful run leaves no record of
+    # what it annotated against. This warm-up used the same library, so lift its summary
+    # into the main log. 'Families' is the number to watch: 237 for the Dfam 3.9 root
+    # partition alone, 272,503 once Mammalia is added.
+    echo "RepeatMasker library summary:"
+    grep -E 'RepeatMasker version|Search Engine|Master RepeatMasker Database|Title[[:space:]]*:|Version[[:space:]]*:|Date[[:space:]]*:|Families[[:space:]]*:|Taxonomy ID|families in ancestor taxa|Building (general|species) libraries|partition' \
+        "${warm_log}" | head -n 20 | sed 's/^/  /'
+
+    # Two ways to end up with a library that annotates nothing, both of which
+    # RepeatMasker exits 0 on: famdb.py raising when a clade's descendants live in an
+    # uninstalled partition (RepeatMasker ignores its exit status and carries on), and a
+    # species that resolves to no families. Reporting success there is worse than
+    # stopping. Both trigger on positive evidence only, so a change in RepeatMasker's
+    # wording can never block a working run.
+    if grep -q 'Traceback (most recent call last)' "${warm_log}"; then
+        echo "RepeatMasker's famdb.py failed while resolving species '${SPECIES}':" >&2
+        grep -hE '^[A-Za-z_.]*(Error|Exception):' "${warm_log}" | sort -u | head -n 3 | sed 's/^/  /' >&2
+        die "Cannot trust the RepeatMasker library for species '${SPECIES}'.\nThis usually means '${SPECIES}' has descendant taxa in a FamDB partition that is not installed - RepeatMasker would carry on and annotate against an empty library.\nInstall the partitions covering '${SPECIES}' (see --dfam_dir) or choose a species your partitions cover.\nFull log kept at: ${warm_log}"
+    fi
+    if grep -q '0 families in ancestor taxa; 0 lineage-specific families' "${warm_log}"; then
+        die "RepeatMasker resolved no families for species '${SPECIES}' - every repeat annotation would be empty.\nInstall the FamDB partitions covering '${SPECIES}' (see --dfam_dir).\nFull log kept at: ${warm_log}"
+    fi
+
+    rm -rf "${warm_dir}" || die "failed to remove ${warm_dir}"
+    echo "done. Library preparation took $((T_WARM_END - T_WARM_START)) seconds"
+}
+
 run_repeatmasker() {
     mkdir -p ${RM_TMP}
     echo "Running RepeatMasker..."
@@ -302,7 +450,19 @@ run_repeatmasker() {
 
     # Run RepeatMasker in parallel with error sensitivity.
     # MAX_JOBS and THREADS_PER_JOB are set by resolve_thread_counts.
-    find ${EXTRACT_SV_FLANKS_OUT} -name "*.fa" | parallel --halt now,fail=1 -j "${MAX_JOBS}" "${REPEAT_MASKER} {} -pa ${THREADS_PER_JOB} -html -gff -dir ${EXTRACT_SV_FLANKS_OUT} -species ${SPECIES} > {}.log 2>&1" || die "RepeatMasker failed"
+    if ! find ${EXTRACT_SV_FLANKS_OUT} -name "*.fa" | parallel --halt now,fail=1 -j "${MAX_JOBS}" "${REPEAT_MASKER} {} -pa ${THREADS_PER_JOB} -html -gff -dir ${EXTRACT_SV_FLANKS_OUT} -species ${SPECIES} > {}.log 2>&1"; then
+        # parallel reports only the failing command line; the reason is in that job's own
+        # log. Surface it - most often a FamDB partition that does not cover --species.
+        local last_log
+        last_log=$(find "${EXTRACT_SV_FLANKS_OUT}" -name '*.fa.log' -printf '%T@ %p\n' 2>/dev/null |
+            sort -rn | head -n1 | cut -d' ' -f2-)
+        if [[ -n "${last_log}" ]]; then
+            echo "RepeatMasker reported (${last_log}):" >&2
+            tail -n 20 "${last_log}" | sed 's/^/  /' >&2
+        fi
+        echo "Remaining RepeatMasker logs: ${EXTRACT_SV_FLANKS_OUT}/*.fa.log" >&2
+        die "RepeatMasker failed"
+    fi
 
     cd - || die "cd - failed"
     T3=$(date +%s) || die "failed to get T3"
@@ -404,6 +564,8 @@ show_output_paths() {
 
         rm -rf ${ANNOTATIONS_OUT} || die "failed to remove ${ANNOTATIONS_OUT}"
         rm -rf ${EXTRACT_SV_FLANKS_OUT} || die "failed to remove ${EXTRACT_SV_FLANKS_OUT}"
+        # Only ever a tree of symlinks (see setup_dfam_library); never the databases themselves.
+        [[ -d ${RM_LIBDIR} ]] && { rm -rf ${RM_LIBDIR} || die "failed to remove ${RM_LIBDIR}"; }
         # rm -f ${INFO_FILE} || die "failed to remove ${INFO_FILE}"
         # rm -f ${RM_FILE} || die "failed to remove ${RM_FILE}"
         # rm -f ${TRF_FILE} || die "failed to remove ${TRF_FILE}"
@@ -427,6 +589,10 @@ if [[ ${RESUME} -eq 1 ]]; then
     check_resume_inputs
 else
     create_output_dir
+    setup_dfam_library
+    # Before extraction: a species the installed partitions cannot cover is fatal, and
+    # there is no point spending an extraction and a TRF pass to find that out.
+    warm_repeatmasker_cache
     extract_flanking_regions
     run_trf
     run_repeatmasker
