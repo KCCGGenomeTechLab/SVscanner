@@ -18,7 +18,8 @@ FROM dfam/tetools:1.99
 LABEL org.opencontainers.image.title="SVscanner" \
       org.opencontainers.image.description="Annotate tandem repeats and mobile elements within structural variants using TRF and RepeatMasker" \
       org.opencontainers.image.source="https://github.com/GenTechGp/SVscanner" \
-      org.opencontainers.image.base.name="docker.io/dfam/tetools:1.99"
+      org.opencontainers.image.base.name="docker.io/dfam/tetools:1.99" \
+      org.opencontainers.image.licenses="MIT"
 
 ARG HTSLIB_VERSION=1.21
 ARG BCFTOOLS_VERSION=1.21
