@@ -3,8 +3,8 @@
 Published to the GitHub Container Registry on every release tag:
 
 ```
-ghcr.io/gentechgp/svscanner:0.6.1     # a specific release
-ghcr.io/gentechgp/svscanner:0.6       # latest patch of a minor series
+ghcr.io/gentechgp/svscanner:0.7.0     # a specific release
+ghcr.io/gentechgp/svscanner:0.7       # latest patch of a minor series
 ghcr.io/gentechgp/svscanner:latest    # latest release
 ```
 
@@ -70,7 +70,7 @@ docker run --rm \
   -v /path/to/reference:/ref:ro \
   -v "$PWD":/data \
   -e SVSCANNER_DFAM_DIR=/dfam \
-  ghcr.io/gentechgp/svscanner:0.6.1 \
+  ghcr.io/gentechgp/svscanner:0.7.0 \
   svscanner --vcf /data/input.vcf.gz --ref /ref/hg38.fa --out /data/svscanner_out
 ```
 
@@ -83,7 +83,7 @@ add `--user "$(id -u):$(id -g)"` if you want them owned by you.
 singularity exec \
   --bind /path/to/dfam:/dfam \
   --bind /path/to/reference:/ref \
-  docker://ghcr.io/gentechgp/svscanner:0.6.1 \
+  docker://ghcr.io/gentechgp/svscanner:0.7.0 \
   svscanner --dfam_dir /dfam --vcf input.vcf.gz --ref /ref/hg38.fa --out svscanner_out
 ```
 
@@ -98,7 +98,7 @@ Declare the image on the process:
 ```groovy
 process {
     withName: 'svscanner' {
-        container = 'ghcr.io/gentechgp/svscanner:0.6.1'
+        container = 'ghcr.io/gentechgp/svscanner:0.7.0'
         cpus = 32
         memory = '128GB'
         time = '16h'

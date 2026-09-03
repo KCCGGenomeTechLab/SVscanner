@@ -90,7 +90,7 @@ needs cloning or compiling:
 
 ```
 docker run --rm -v /path/to/dfam:/dfam:ro -v "$PWD":/data \
-  ghcr.io/gentechgp/svscanner:0.6.1 \
+  ghcr.io/gentechgp/svscanner:0.7.0 \
   svscanner --dfam_dir /dfam --vcf /data/[vcf] --ref /data/[ref] --out /data/[out]
 ```
 
