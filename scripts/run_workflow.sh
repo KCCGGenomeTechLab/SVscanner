@@ -289,7 +289,8 @@ setup_dfam_library() {
     # are unsafe to inherit: the name records the database version but not which
     # partitions built the cache. Since --dfam_dir exists to add partitions the install
     # lacks, an inherited cache is stale by construction and RepeatMasker reuses it
-    # silently. Rebuilding costs ~4 min/run for human against Dfam 3.9 Mammalia.
+    # silently. Rebuilding for human against Dfam 3.9 Mammalia costs ~30s under RMBlast,
+    # ~4 min under HMMER.
     local entry name skipped=()
     for entry in "${stock_libdir}"/*; do
         [[ -e "${entry}" ]] || continue

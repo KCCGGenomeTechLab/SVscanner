@@ -66,9 +66,9 @@ the run. Files in `--dfam_dir` take precedence over same-named files in the inst
 
 RepeatMasker derives a search library from the partitions the first time it is asked for a
 given species, and caches it. With `--dfam_dir` that cache is built inside the assembled
-directory, so it is **rebuilt on every run** — measured at about 4 minutes for `-species
-human` against the Dfam 3.9 Mammalia partition. The run log reports it as `Library
-preparation took N seconds`.
+directory, so it is **rebuilt on every run**. For `-species human` against the Dfam 3.9
+Mammalia partition that was measured at ~30 seconds with RMBlast and ~4 minutes with HMMER.
+The run log reports it as `Library preparation took N seconds`.
 
 The installation's own cache directories are deliberately *not* reused. Their names record
 the database title and version but not which partitions were present when they were built,

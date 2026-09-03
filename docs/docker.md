@@ -56,11 +56,11 @@ the image's own libraries at the start of each run. See
 Use the Dfam **3.9** partitions: the image's RepeatMasker reads the FamDB 2.0 format, and
 Dfam 4.0 files will not load.
 
-Expect roughly four minutes of library preparation at the start of each run — RepeatMasker
+Each run spends about 30 seconds preparing the library before annotating: RepeatMasker
 derives its search library from the partition, and the image has nowhere persistent to keep
-the result. It is reported in the log as `Library preparation took N seconds`. This is a
-fixed cost per run, not per variant, so it matters for small test runs and disappears into
-the noise on real cohorts.
+the result. It is reported in the log as `Library preparation took N seconds`, and is a
+fixed cost per run rather than per variant. (The same build takes ~4 minutes under HMMER,
+which is what the NCI module uses; RMBlast is markedly faster at it.)
 
 ## Docker
 
